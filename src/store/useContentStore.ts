@@ -9,6 +9,12 @@ import {
   StreamDoneEvent,
   StreamErrorEvent,
 } from '../types';
+import { PLATFORM_FORMATS } from '../constants/formats';
+import {
+  buildContextualFallbackAdvice,
+  buildSynthesizedVariantStreamText,
+  SectionStreamParser,
+} from '../../server/prompts';
 
 const HISTORY_STORAGE_KEY = 'content_forge_history_v1';
 const API_KEY_STORAGE_KEY = 'content_forge_gemini_api_key_v1';
@@ -304,7 +310,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
 
   triggerPregenerate: async (customFormatId) => {
     const { topic, platform, selectedFormatId, apiKey } = get();
-    if (!topic.trim()) return;
+    const cleanTopic = topic.trim();
+    if (!cleanTopic) return;
 
     const effFormatId = customFormatId || selectedFormatId;
     set({ isPregenerating: true, pregenOpen: true, error: null });
@@ -314,30 +321,39 @@ export const useContentStore = create<ContentState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic,
+          topic: cleanTopic,
           platform,
           formatId: effFormatId,
           apiKey,
         }),
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to pregenerate advice');
+      if (res.ok) {
+        const data = await res.json();
+        const angles: string[] = Array.isArray(data.suggestedAngles) ? data.suggestedAngles : [];
+        set({
+          suggestedAngles: angles,
+          selectedAngles: angles,
+          detectedTone: data.detectedTone || 'Практичный, экспертный',
+          formatAdvice: data.formatAdvice || null,
+          selectedFormatId: data.suggestedFormatId || effFormatId,
+          isPregenerating: false,
+        });
+        return;
       }
-
-      const data = await res.json();
-      const angles: string[] = Array.isArray(data.suggestedAngles) ? data.suggestedAngles : [];
-      set({
-        suggestedAngles: angles,
-        selectedAngles: angles,
-        detectedTone: data.detectedTone || 'Практичный, экспертный',
-        formatAdvice: data.formatAdvice || null,
-        selectedFormatId: data.suggestedFormatId || effFormatId,
-        isPregenerating: false,
-      });
     } catch {
-      set({ isPregenerating: false });
+      // server not available (e.g. static GitHub Pages)
     }
+
+    const fallback = buildContextualFallbackAdvice(cleanTopic, platform, effFormatId);
+    set({
+      suggestedAngles: fallback.suggestedAngles,
+      selectedAngles: fallback.suggestedAngles,
+      detectedTone: fallback.detectedTone,
+      formatAdvice: fallback.formatAdvice,
+      selectedFormatId: fallback.formatAdvice.recommendedFormatId,
+      isPregenerating: false,
+    });
   },
 
   startGeneration: async (opts) => {
@@ -388,6 +404,8 @@ export const useContentStore = create<ContentState>((set, get) => ({
       activeVariantTab: 0,
     });
 
+    let streamedViaServer = false;
+
     try {
       const response = await fetch('/api/generate-stream', {
         method: 'POST',
@@ -404,145 +422,212 @@ export const useContentStore = create<ContentState>((set, get) => ({
         signal: abortController.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (response.ok && response.body) {
+        streamedViaServer = true;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let sseBuffer = '';
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let sseBuffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+          const events = sseBuffer.split('\n\n');
+          sseBuffer = events.pop() || '';
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const events = sseBuffer.split('\n\n');
-        sseBuffer = events.pop() || '';
+          for (const rawEvent of events) {
+            const lines = rawEvent.split('\n');
+            let eventType = 'message';
+            let dataStr = '';
 
-        for (const rawEvent of events) {
-          const lines = rawEvent.split('\n');
-          let eventType = 'message';
-          let dataStr = '';
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                dataStr += line.slice(5).trim();
+              }
+            }
 
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventType = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-              dataStr += line.slice(5).trim();
+            if (!dataStr) continue;
+
+            if (eventType === 'chunk') {
+              const payload = JSON.parse(dataStr) as StreamChunkEvent;
+              set((state) => {
+                const updated = [...state.variants];
+                const target = updated[payload.variantIndex];
+                if (!target) return state;
+
+                const next = { ...target };
+                if (payload.angleTitle) next.angleTitle = payload.angleTitle;
+                if (payload.formatName) next.formatName = payload.formatName;
+
+                if (payload.section === 'TITLE') {
+                  next.title = (next.title + payload.text).replace(/^\n+/, '');
+                } else if (payload.section === 'BODY') {
+                  next.body = (next.body + payload.text).replace(/^\n+/, '');
+                } else if (payload.section === 'CTA') {
+                  next.cta = (next.cta + payload.text).replace(/^\n+/, '');
+                } else if (payload.section === 'TAGS') {
+                  const rawTags = (next.rawTagsText || '') + payload.text;
+                  next.rawTagsText = rawTags;
+                  next.hashtags = parseHashtags(rawTags);
+                }
+
+                updated[payload.variantIndex] = next;
+                return { variants: updated };
+              });
+            } else if (eventType === 'done') {
+              const donePayload = JSON.parse(dataStr) as StreamDoneEvent & {
+                formatId?: string;
+                formatName?: string;
+              };
+              const finalizedVariants = get().variants.map((v) => ({
+                id: v.id,
+                angleTitle: v.angleTitle.trim(),
+                formatId: donePayload.formatId || v.formatId,
+                formatName: donePayload.formatName || v.formatName,
+                title: v.title.trim(),
+                body: v.body.trim(),
+                cta: v.cta.trim(),
+                hashtags:
+                  v.hashtags.length > 0
+                    ? v.hashtags
+                    : parseHashtags(v.rawTagsText || '#content_engine'),
+              }));
+
+              const newRecord: GenerationRecord = {
+                id: donePayload.generationId || `gen-${Date.now()}`,
+                createdAt: donePayload.timestamp || Date.now(),
+                topic: cleanTopic,
+                platform,
+                formatId: donePayload.formatId || selectedFormatId,
+                formatName: donePayload.formatName,
+                variants: finalizedVariants,
+              };
+
+              const nextHistory = [
+                newRecord,
+                ...get().history.filter((h) => h.id !== newRecord.id),
+              ].slice(0, MAX_HISTORY_ITEMS);
+
+              saveHistoryToStorage(nextHistory);
+              fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newRecord),
+              }).catch(() => {});
+
+              set({
+                variants: finalizedVariants,
+                history: nextHistory,
+                isStreaming: false,
+              });
+            } else if (eventType === 'error') {
+              const errPayload = JSON.parse(dataStr) as StreamErrorEvent;
+              set({
+                isStreaming: false,
+                error: {
+                  code: errPayload.code || 'ERR_STREAM_INTERRUPTED',
+                  message:
+                    errPayload.message ||
+                    'Поток генерации был неожиданно прерван.',
+                },
+              });
             }
           }
-
-          if (!dataStr) continue;
-
-          if (eventType === 'chunk') {
-            const payload = JSON.parse(dataStr) as StreamChunkEvent;
-            set((state) => {
-              const updated = [...state.variants];
-              const target = updated[payload.variantIndex];
-              if (!target) return state;
-
-              const next = { ...target };
-              if (payload.angleTitle) {
-                next.angleTitle = payload.angleTitle;
-              }
-              if (payload.formatName) {
-                next.formatName = payload.formatName;
-              }
-
-              if (payload.section === 'TITLE') {
-                next.title = (next.title + payload.text).replace(/^\n+/, '');
-              } else if (payload.section === 'BODY') {
-                next.body = (next.body + payload.text).replace(/^\n+/, '');
-              } else if (payload.section === 'CTA') {
-                next.cta = (next.cta + payload.text).replace(/^\n+/, '');
-              } else if (payload.section === 'TAGS') {
-                const rawTags = (next.rawTagsText || '') + payload.text;
-                next.rawTagsText = rawTags;
-                next.hashtags = parseHashtags(rawTags);
-              }
-
-              updated[payload.variantIndex] = next;
-              return { variants: updated };
-            });
-          } else if (eventType === 'done') {
-            const donePayload = JSON.parse(dataStr) as StreamDoneEvent & {
-              formatId?: string;
-              formatName?: string;
-            };
-            const finalizedVariants = get().variants.map((v) => ({
-              id: v.id,
-              angleTitle: v.angleTitle.trim(),
-              formatId: donePayload.formatId || v.formatId,
-              formatName: donePayload.formatName || v.formatName,
-              title: v.title.trim(),
-              body: v.body.trim(),
-              cta: v.cta.trim(),
-              hashtags:
-                v.hashtags.length > 0
-                  ? v.hashtags
-                  : parseHashtags(v.rawTagsText || '#content_engine'),
-            }));
-
-            const newRecord: GenerationRecord = {
-              id: donePayload.generationId || `gen-${Date.now()}`,
-              createdAt: donePayload.timestamp || Date.now(),
-              topic: cleanTopic,
-              platform,
-              formatId: donePayload.formatId || selectedFormatId,
-              formatName: donePayload.formatName,
-              variants: finalizedVariants,
-            };
-
-            const nextHistory = [
-              newRecord,
-              ...get().history.filter((h) => h.id !== newRecord.id),
-            ].slice(0, MAX_HISTORY_ITEMS);
-
-            saveHistoryToStorage(nextHistory);
-            fetch('/api/history', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(newRecord),
-            }).catch(() => {});
-
-            set({
-              variants: finalizedVariants,
-              history: nextHistory,
-              isStreaming: false,
-            });
-          } else if (eventType === 'error') {
-            const errPayload = JSON.parse(dataStr) as StreamErrorEvent;
-            set({
-              isStreaming: false,
-              error: {
-                code: errPayload.code || 'ERR_STREAM_INTERRUPTED',
-                message:
-                  errPayload.message ||
-                  'Поток генерации был неожиданно прерван. Проверьте подключение или повторите запрос.',
-              },
-            });
-          }
         }
-      }
-
-      if (get().isStreaming) {
-        set({ isStreaming: false });
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         set({ isStreaming: false });
         return;
       }
+    }
+
+    // Автономный клиентский стриминг (для статического размещения на GitHub Pages)
+    if (!streamedViaServer) {
+      const currentFormatDef =
+        PLATFORM_FORMATS[platform]?.find((f) => f.id === selectedFormatId) ||
+        PLATFORM_FORMATS[platform]?.[0];
+      const formatName = currentFormatDef?.name || 'Видео';
+
+      await Promise.all(
+        effectiveAngles.slice(0, variantsCount).map(async (angle, variantIndex) => {
+          const fullText = buildSynthesizedVariantStreamText(
+            cleanTopic,
+            platform,
+            angle,
+            variantIndex,
+            selectedFormatId
+          );
+          const parser = new SectionStreamParser((section, text) => {
+            set((state) => {
+              const updated = [...state.variants];
+              const target = updated[variantIndex];
+              if (!target) return state;
+
+              const next = { ...target, formatName };
+              if (section === 'TITLE') {
+                next.title = (next.title + text).replace(/^\n+/, '');
+              } else if (section === 'BODY') {
+                next.body = (next.body + text).replace(/^\n+/, '');
+              } else if (section === 'CTA') {
+                next.cta = (next.cta + text).replace(/^\n+/, '');
+              } else if (section === 'TAGS') {
+                const rawTags = (next.rawTagsText || '') + text;
+                next.rawTagsText = rawTags;
+                next.hashtags = parseHashtags(rawTags);
+              }
+              updated[variantIndex] = next;
+              return { variants: updated };
+            });
+          });
+
+          const tokens = fullText.match(/(\[(?:TITLE|BODY|CTA|TAGS)\]|\S+\s*|\n+)/g) || [fullText];
+          await new Promise((r) => setTimeout(r, variantIndex * 60));
+
+          for (const token of tokens) {
+            if (abortController.signal.aborted) break;
+            parser.push(token);
+            await new Promise((r) => setTimeout(r, 22));
+          }
+          parser.flush();
+        })
+      );
+
+      const finalizedVariants = get().variants.map((v) => ({
+        id: v.id,
+        angleTitle: v.angleTitle.trim(),
+        formatId: selectedFormatId,
+        formatName,
+        title: v.title.trim(),
+        body: v.body.trim(),
+        cta: v.cta.trim(),
+        hashtags:
+          v.hashtags.length > 0 ? v.hashtags : parseHashtags(v.rawTagsText || '#content_engine'),
+      }));
+
+      const newRecord: GenerationRecord = {
+        id: `gen-${Date.now()}`,
+        createdAt: Date.now(),
+        topic: cleanTopic,
+        platform,
+        formatId: selectedFormatId,
+        formatName,
+        variants: finalizedVariants,
+      };
+
+      const nextHistory = [newRecord, ...get().history.filter((h) => h.id !== newRecord.id)].slice(
+        0,
+        MAX_HISTORY_ITEMS
+      );
+      saveHistoryToStorage(nextHistory);
+
       set({
+        variants: finalizedVariants,
+        history: nextHistory,
         isStreaming: false,
-        error: {
-          code: 'ERR_STREAM_INTERRUPTED',
-          message:
-            err instanceof Error
-              ? `Не удалось завершить поток генерации (${err.message}).`
-              : 'Сбой сетевого потока генерации.',
-        },
       });
     }
   },
