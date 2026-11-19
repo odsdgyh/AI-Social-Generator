@@ -1,6 +1,8 @@
 # CONTENT_ENGINE // v1.0 (ContentForge / Social Engine)
 
-Инженерный веб-инструмент для потоковой генерации структурированного контента под **Telegram**, **YouTube** и **Instagram** через **Google Gemini API (`@google/genai`)**, собранный строго по спецификациям [PRD.md](file:///E:/AI%20Workspace/AI-Social-Generator/PRD.md), [SPEC.md](file:///E:/AI%20Workspace/AI-Social-Generator/SPEC.md) и [DESIGN.md](file:///E:/AI%20Workspace/AI-Social-Generator/DESIGN.md).
+🌐 **Онлайн-версия (GitHub Pages):** [https://odsdgyh.github.io/AI-Social-Generator/](https://odsdgyh.github.io/AI-Social-Generator/)
+
+Инженерный веб-инструмент для потоковой генерации структурированного контента под **TikTok**, **YouTube**, **Telegram** и **Instagram** через **Google Gemini API (`@google/genai`)**, собранный строго по спецификациям [PRD.md](file:///E:/AI%20Workspace/AI-Social-Generator/PRD.md), [SPEC.md](file:///E:/AI%20Workspace/AI-Social-Generator/SPEC.md) и [DESIGN.md](file:///E:/AI%20Workspace/AI-Social-Generator/DESIGN.md).
 
 ## Архитектура и стек
 - **Frontend**: React 18, TypeScript, Vite, Framer Motion (`spring` физика), Zustand
