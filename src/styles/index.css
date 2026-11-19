@@ -1,0 +1,913 @@
+:root {
+  /* Surfaces (Угольно-графитовая база — True Neutral Dark + Hardware Tactile Layers) */
+  --bg-canvas: #090909;         /* Основной фон страницы */
+  --bg-recessed: #060606;       /* Утопленные колодцы ввода и телеметрии */
+  --bg-surface-1: #111111;      /* Фон контейнера ввода и карточек превью */
+  --bg-surface-2: #171717;      /* Hover-состояния, плашки тегов, неактивные табы */
+  --bg-surface-3: #202020;      /* Активные контролы, выделенные блоки */
+  --bg-surface-4: #282828;      /* Верхняя грань тактильных клавиш */
+
+  /* Borders (Инженерная сетка 1px) */
+  --border-subtle: #1F1F1F;     /* Внутренние разделители секций */
+  --border-default: #2A2A2A;    /* Основные контуры панелей и карточек */
+  --border-strong: #3E3E3E;     /* Рамка при наведении (hover) и фаски клавиш */
+  --border-highlight: rgba(255, 255, 255, 0.07); /* Верхний микро-блик аппаратной грани */
+
+  /* Typography */
+  --text-primary: #F2F2F2;      /* Основной текст поста и заголовки */
+  --text-secondary: #999999;    /* Вторичный интерфейс, подписи */
+  --text-muted: #555555;        /* Плейсхолдеры, счетчики символов, мета-инфо */
+
+  /* Geometry */
+  --radius-sharp: 0px;          /* Стыки внутри сетки */
+  --radius-xs: 2px;             /* Бейджи, пилюли тегов, внутренние кнопки */
+  --radius-sm: 4px;             /* Внешние контейнеры, кнопки, поля ввода */
+
+  /* Font stacks */
+  --font-sans: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Default platform fallback (Telegram) */
+  --accent-primary: #3B82F6;
+  --accent-muted: rgba(59, 130, 246, 0.12);
+  --accent-border: rgba(59, 130, 246, 0.45);
+}
+
+/* Telegram: Сдержанный технический стальной синий */
+[data-platform="telegram"] {
+  --accent-primary: #3B82F6;
+  --accent-muted: rgba(59, 130, 246, 0.12);
+  --accent-border: rgba(59, 130, 246, 0.45);
+}
+
+/* YouTube: Индустриальный сигнальный красный */
+[data-platform="youtube"] {
+  --accent-primary: #EF4444;
+  --accent-muted: rgba(239, 68, 68, 0.12);
+  --accent-border: rgba(239, 68, 68, 0.45);
+}
+
+/* Instagram: Теплый янтарный / терракотовый (без попсового градиента) */
+[data-platform="instagram"] {
+  --accent-primary: #F59E0B;
+  --accent-muted: rgba(245, 158, 11, 0.12);
+  --accent-border: rgba(245, 158, 11, 0.45);
+}
+
+/* TikTok: Инженерный бирюзовый / кибер-циан (Zero AI-Slop) */
+[data-platform="tiktok"] {
+  --accent-primary: #06B6D4;
+  --accent-muted: rgba(6, 182, 212, 0.12);
+  --accent-border: rgba(6, 182, 212, 0.45);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background-color: var(--bg-canvas);
+  /* Инженерная микро-перфорация (24x24px) в стиле приборных панелей */
+  background-image:
+    radial-gradient(#1C1C1C 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+  background-size: 24px 24px, 120px 120px, 120px 120px;
+  background-position: center top;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Системные метки (Mono Labels) */
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+/* Сквозная инженерная сетка (Focused Single-Column Layout 720px) */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Направляющие вертикальные линии чертежного листа по краям 720px рабочей зоны с делениями линейки */
+.blueprint-rails {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 720px;
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.blueprint-rails::before,
+.blueprint-rails::after {
+  content: '';
+  position: absolute;
+  top: 48px;
+  bottom: 0;
+  width: 5px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--border-default) 0px,
+    var(--border-default) 1px,
+    transparent 1px,
+    transparent 48px
+  );
+  opacity: 0.65;
+}
+
+.blueprint-rails::before {
+  left: 0;
+}
+
+.blueprint-rails::after {
+  right: 0;
+}
+
+/* Угловые прицельные кресты (+) как на чертежах и корпусах Teenage Engineering */
+.chassis-crosshair {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-muted);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Аппаратный светодиодный индикатор (LED) */
+.hw-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  display: inline-block;
+  background-color: var(--text-muted);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+.hw-led.online {
+  background-color: #22C55E;
+}
+
+.hw-led.accent {
+  background-color: var(--accent-primary);
+}
+
+.hw-led.amber {
+  background-color: #F59E0B;
+}
+
+@keyframes pulseLed {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.hw-led.blinking {
+  animation: pulseLed 900ms steps(2, start) infinite;
+}
+
+/* Верхняя техническая панель (Top Bar — Высота 48px) */
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: 48px;
+  background-color: rgba(9, 9, 9, 0.94);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+}
+
+.top-bar-inner {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.workspace-column {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Плавное проявление слов при стриминге (Word-by-Word Blur Fade-In) */
+@keyframes tokenReveal {
+  0% {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+.streaming-word {
+  display: inline;
+  animation: tokenReveal 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Полоса сканирования при прегенерации (1px --accent-primary) */
+@keyframes scanLine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.pregen-scan-track {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  background-color: var(--bg-recessed);
+  overflow: hidden;
+}
+
+.pregen-scan-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 2px;
+  background-color: var(--accent-primary);
+  animation: scanLine 900ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/* Пульт ввода (Command Console — Аппаратное шасси) */
+.command-console {
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  border-bottom: 2px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  overflow: hidden;
+  transition: border-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.command-console.is-focused {
+  border-color: var(--accent-border);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* Верхняя микро-планка шасси пульта */
+.console-chassis-header {
+  height: 26px;
+  padding: 0 12px;
+  background-color: var(--bg-recessed);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Ярус 1: Селектор платформы (4 соцсети: TELEGRAM, YOUTUBE, INSTAGRAM, TIKTOK) */
+.console-tier-1 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-1);
+}
+
+.platform-tab {
+  height: 46px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background-color: var(--bg-surface-1);
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 2px solid transparent;
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.platform-tab:last-child {
+  border-right: none;
+}
+
+.platform-tab:hover:not(.active) {
+  background-color: var(--bg-surface-2);
+  color: var(--text-primary);
+}
+
+.platform-tab.active {
+  background-color: var(--accent-muted);
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent-primary);
+}
+
+.platform-tab .marker {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Информационная полоса правил выбранной платформы */
+.platform-spec-strip {
+  padding: 6px 14px;
+  background-color: var(--bg-recessed);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+/* Ярус 2: Поле ввода (Утопленный колодец терминала) */
+.console-tier-2 {
+  position: relative;
+  background-color: var(--bg-surface-1);
+  padding: 14px 16px 38px;
+}
+
+.prompt-textarea {
+  width: 100%;
+  min-height: 96px;
+  max-height: 240px;
+  resize: none;
+  overflow-y: hidden;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  border: none;
+}
+
+.prompt-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Нижняя телеметрическая шкала внутри поля ввода */
+.prompt-counter-bar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Сегментированный индикатор заполненности промпта (VU-метр) */
+.vu-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.vu-segment {
+  width: 4px;
+  height: 8px;
+  background-color: var(--border-default);
+  border-radius: 1px;
+}
+
+.vu-segment.lit {
+  background-color: var(--accent-primary);
+}
+
+/* Панель выбора форматов под конкретную соцсеть */
+.format-shelf {
+  padding: 10px 14px;
+  background-color: var(--bg-recessed);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.format-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.format-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  border-bottom: 2px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  transition: all 140ms ease;
+  user-select: none;
+}
+
+.format-chip-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background-color: var(--bg-surface-2);
+}
+
+.format-chip-btn.active {
+  background-color: var(--accent-muted);
+  border-color: var(--accent-border);
+  border-bottom-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.format-indicator-badge {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 1px;
+  background-color: var(--bg-surface-3);
+  color: var(--text-muted);
+}
+
+.format-indicator-badge.max-views {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.format-indicator-badge.easiest {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: #22C55E;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* Блок стратегии и советов ИИ по охватам и простоте */
+.ai-advisor-panel {
+  padding: 12px 14px;
+  background-color: var(--bg-surface-1);
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--accent-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.advisor-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .advisor-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.advisor-card {
+  padding: 8px 10px;
+  background-color: var(--bg-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Ярус 3: Полоса прегенерации и запуска */
+.console-tier-3 {
+  border-top: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-1);
+}
+
+.pregen-drawer {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-recessed);
+}
+
+.angle-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  border-bottom: 2px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: left;
+  line-height: 1.35;
+  transition: all 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.angle-tag-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background-color: var(--bg-surface-2);
+}
+
+.angle-tag-btn:active {
+  transform: translateY(1px);
+}
+
+.angle-tag-btn.selected {
+  background-color: var(--accent-muted);
+  border-color: var(--accent-border);
+  border-bottom-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.console-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  gap: 10px;
+  flex-wrap: wrap;
+  background-color: var(--bg-surface-1);
+}
+
+/* Тактильная аппаратная клавиша (Keycap Button) */
+.btn-technical {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-default);
+  border-bottom: 2px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease, transform 80ms ease;
+}
+
+.btn-technical:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background-color: var(--bg-surface-3);
+}
+
+.btn-technical:active:not(:disabled) {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+.btn-technical:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Главная пусковая клавиша (Trigger Keycap) */
+.btn-generate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  background-color: var(--text-primary);
+  color: #090909;
+  border: 1px solid #FFFFFF;
+  border-bottom: 2px solid #999999;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1), color 150ms ease, border-color 150ms ease, transform 80ms ease;
+}
+
+.btn-generate:hover:not(:disabled) {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  border-bottom-color: rgba(0, 0, 0, 0.45);
+  color: #090909;
+}
+
+.btn-generate:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-generate:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Карточка «Превью реального поста» */
+.post-preview-card {
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  border-bottom: 2px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 var(--border-highlight);
+  overflow: hidden;
+  transition: border-color 300ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 300ms Border Flash при копировании всей карточки */
+.post-preview-card.flash-copied {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-muted);
+}
+
+/* Верхняя техническая шина карточки */
+.post-card-chassis-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background-color: var(--bg-recessed);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Выразительная шапка соцсети (Telegram / YouTube / Instagram) */
+.social-client-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.social-avatar-box {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  background-color: var(--bg-surface-3);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+/* Интерактивные зоны внутри карточки (TITLE, BODY, CTA, TAGS) */
+.post-zone {
+  position: relative;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  transition: border-color 300ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+}
+
+.post-zone:hover {
+  border-color: var(--border-strong);
+  background-color: var(--bg-surface-2);
+}
+
+.post-zone.flash-copied {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-muted);
+}
+
+.post-zone-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.post-zone-index {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.post-zone-badge {
+  opacity: 0;
+  pointer-events: none;
+  padding: 2px 6px;
+  background-color: var(--bg-surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.post-zone:hover .post-zone-badge,
+.post-zone.flash-copied .post-zone-badge {
+  opacity: 1;
+}
+
+.post-zone.flash-copied .post-zone-badge {
+  color: var(--accent-primary);
+  border-color: var(--accent-border);
+}
+
+/* Типографика 4 блоков поста */
+.post-title-text {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.post-body-text {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.post-cta-block {
+  border-left: 2px solid var(--accent-primary);
+  padding: 8px 12px;
+  background-color: var(--bg-recessed);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.hashtag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-primary);
+  background-color: var(--bg-recessed);
+  padding: 3px 8px;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  transition: border-color 150ms ease, background-color 150ms ease, transform 80ms ease;
+}
+
+.hashtag-pill:hover {
+  border-color: var(--accent-border);
+  background-color: var(--accent-muted);
+}
+
+.hashtag-pill:active {
+  transform: translateY(1px);
+}
+
+.hashtag-pill.copied {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-muted);
+}
+
+/* Реакции и метрики клиента в подвале карточки */
+.client-reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Error State (#7F1D1D) */
+.error-banner {
+  background-color: var(--bg-surface-1);
+  border: 1px solid #7F1D1D;
+  border-left: 3px solid #EF4444;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Slide-over History Drawer */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 50;
+}
+
+.history-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 400px;
+  max-width: 100vw;
+  background-color: var(--bg-surface-1);
+  border-left: 1px solid var(--border-default);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 760px) {
+  .blueprint-rails {
+    display: none;
+  }
+  .workspace-column {
+    padding: 16px 12px 72px;
+  }
+}
